@@ -99,10 +99,7 @@ impl Router {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::Result;
     use bytes::BytesMut;
-    use std::sync::Arc;
-    use tokio::runtime::Runtime;
 
     #[tokio::test]
     async fn test_router_add_and_handle_route() {

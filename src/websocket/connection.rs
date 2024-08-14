@@ -15,6 +15,7 @@ use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 use crate::{
     error::{Error, Result},
     websocket::events::SocketEvents,
+    websocket::header_parser::HeaderParser,
 };
 
 use super::router::Router;
@@ -109,9 +110,8 @@ pub async fn handle_connection(
 /// * `writer` - The WebSocket writer to send messages to the client.
 async fn recieve_msg(mut rx: MsgReciver, mut writer: SocketWriter) -> Result<()> {
     while let Some((error_code, cmd, response_data)) = rx.recv().await {
-        let mut header = [0u8; 4];
-        BigEndian::write_u16(&mut header[0..2], error_code);
-        BigEndian::write_u16(&mut header[2..4], cmd);
+        let data = vec![error_code, cmd];
+        let header = data.parse_header();
 
         let mut message = BytesMut::from(&header[..]);
         if let Some(data) = response_data {
@@ -161,6 +161,9 @@ async fn handle_msg(
             let data = message.into_data();
 
             if data.len() >= 2 {
+                // let deserialized: Vec<u16> = Vec::<u16>::deserialize_header(&data);
+                // let cmd = deserialized[0];
+
                 let cmd = BigEndian::read_u16(&data[0..2]);
 
                 let payload = &data[2..];

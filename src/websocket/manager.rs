@@ -38,9 +38,10 @@ impl SocketManager {
         Ok(id)
     }
 
-    pub fn remove_connection(&mut self, id: &u32) {
+    pub fn remove_connection(&mut self, id: u32) {
         println!("===============remove connection=========: {}", id);
-        // self.connections.remove(id).unwrap();
+        // self.connections.remove(&id).unwrap();
+        // self.connection_index_pool.push(id);
     }
 
     /// 广播消息给指定或所有连接的客户端
@@ -94,12 +95,6 @@ pub async fn start_loop(mut reciever: UnboundedReceiver<SocketEvents>) {
                 Ok(id) => {
                     conn.id = id;
                     mgr.connections.insert(id, conn);
-
-                    // if tx.send(id).is_ok() {
-                    //     mgr.broadcast_lobby_info().await;
-                    // } else {
-                    //     mgr.connections.remove(&id).unwrap();
-                    // }
                 }
                 Err(Error::ErrorCode(code)) => {
                     let _ = conn.msg_sender.send((code, 0, None));
@@ -108,7 +103,7 @@ pub async fn start_loop(mut reciever: UnboundedReceiver<SocketEvents>) {
                     eprintln!("{}", e);
                 }
             },
-            SocketEvents::Disconnect(id) => mgr.remove_connection(&id),
+            SocketEvents::Disconnect(id) => mgr.remove_connection(id),
         }
     }
 }
