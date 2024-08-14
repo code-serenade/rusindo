@@ -11,8 +11,6 @@ tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.23.1"
 futures-util = "0.3.30"
 bytes = "1.7"
-prost = "0.13"
-uuid = { version = "1.10.0", features = ["v4"] }
 byteorder = "1.5.0"
 service_utils_rs = { version = "0.1.2", features = ["jwt"] }
 thiserror = "1.0.63"
