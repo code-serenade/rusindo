@@ -29,6 +29,7 @@ fn init_router() -> websocket::router::Router {
 
 async fn handle_user_info(data: BytesMut) -> Result<BytesMut> {
     // todo others
+    println!("data: {:?}", data);
     let response = BytesMut::from("User Info: John Doe");
     Ok(response)
 }
@@ -36,6 +37,7 @@ async fn handle_user_info(data: BytesMut) -> Result<BytesMut> {
 // 定义另一个处理函数
 async fn handle_order(data: BytesMut) -> Result<BytesMut> {
     // todo others
+    println!("data: {:?}", data);
     let response = BytesMut::from("Order: #12345");
     Ok(response)
 }
