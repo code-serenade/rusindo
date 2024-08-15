@@ -1,8 +1,8 @@
 use super::connection::Connection;
 // use bytes::BytesMut;
-// use tokio::sync::mpsc::Sender;
+use tokio::sync::oneshot::Sender;
 
 pub enum SocketEvents {
-    Handshake(Connection),
+    Handshake(Sender<u16>, Connection),
     Disconnect(u32),
 }

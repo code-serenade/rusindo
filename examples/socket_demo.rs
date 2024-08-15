@@ -43,6 +43,6 @@ async fn handle_order(data: BytesMut) -> Result<BytesMut> {
 fn sub_to_id(sub: &str) -> u32 {
     match sub.parse::<u32>() {
         Ok(id) => id,
-        Err(_) => 0,
+        Err(_) => 300,
     }
 }

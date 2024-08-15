@@ -2,6 +2,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("system error: {0}")]
+    SystemError(String),
+
     #[error("service utils error: {0}")]
     JwtError(#[from] service_utils_rs::error::Error),
 

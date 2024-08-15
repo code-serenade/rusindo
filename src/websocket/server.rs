@@ -38,7 +38,6 @@ where
                     Ok(claims) => {
                         println!("claims: {:?}", claims);
                         id = func_get_id(&claims.sub);
-                        // token_info.push_str(&claims.sub);
                     }
                     Err(_) => *res.status_mut() = http::StatusCode::BAD_REQUEST,
                 }

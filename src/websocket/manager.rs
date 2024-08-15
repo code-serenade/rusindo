@@ -1,4 +1,8 @@
-use super::{connection::Connection, events::SocketEvents};
+use super::{
+    connection::Connection,
+    error_code::{SUCCECE, SYSTEM_ERROR},
+    events::SocketEvents,
+};
 use crate::error::{Error, Result};
 use bytes::BytesMut;
 use std::collections::HashMap;
@@ -6,42 +10,29 @@ use tokio::sync::mpsc::UnboundedReceiver;
 
 pub struct SocketManager {
     connections: HashMap<u32, Connection>,
-    max_client: u32,
-    connection_indices: u32,
-    connection_index_pool: Vec<u32>,
+    max_client: usize,
 }
 
 impl SocketManager {
     pub fn new() -> Self {
         Self {
             connections: HashMap::new(),
-            max_client: 1000,
-            connection_indices: 0,
-            connection_index_pool: Vec::new(),
+            max_client: 10000,
         }
     }
 
-    pub fn add_connection(&mut self) -> Result<u32> {
-        let id = if !self.connection_index_pool.is_empty() {
-            self.connection_index_pool.pop().unwrap()
-        } else if self.connection_indices < self.max_client {
-            self.connection_indices += 1;
-            self.connection_indices
-        } else {
-            0
-        };
-
-        if id == 0 {
-            return Err(Error::ErrorCode(1));
+    pub fn add_connection(&mut self, conn: Connection) -> Result<()> {
+        if self.connections.len() >= self.max_client {
+            return Err(Error::SystemError("Too many connections".to_string()));
         }
+        self.connections.insert(conn.id, conn);
 
-        Ok(id)
+        Ok(())
     }
 
     pub fn remove_connection(&mut self, id: u32) {
         println!("===============remove connection=========: {}", id);
-        // self.connections.remove(&id).unwrap();
-        // self.connection_index_pool.push(id);
+        self.connections.remove(&id).unwrap();
     }
 
     /// 广播消息给指定或所有连接的客户端
@@ -87,23 +78,18 @@ impl SocketManager {
     }
 }
 
-pub async fn start_loop(mut reciever: UnboundedReceiver<SocketEvents>) {
+pub async fn start_loop(mut reciever: UnboundedReceiver<SocketEvents>) -> Result<()> {
     let mut mgr = SocketManager::new();
     while let Some(event) = reciever.recv().await {
         match event {
-            SocketEvents::Handshake(mut conn) => match mgr.add_connection() {
-                Ok(id) => {
-                    conn.id = id;
-                    mgr.connections.insert(id, conn);
+            SocketEvents::Handshake(tx, conn) => match mgr.add_connection(conn) {
+                Err(_e) => {
+                    tx.send(SYSTEM_ERROR).unwrap();
                 }
-                Err(Error::ErrorCode(code)) => {
-                    let _ = conn.msg_sender.send((code, 0, None));
-                }
-                Err(e) => {
-                    eprintln!("{}", e);
-                }
+                Ok(_) => tx.send(SUCCECE).unwrap(),
             },
             SocketEvents::Disconnect(id) => mgr.remove_connection(id),
         }
     }
+    Ok(())
 }
