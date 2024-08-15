@@ -12,7 +12,10 @@ use tokio_tungstenite::{
     },
 };
 
-pub async fn start(router: Arc<Router>, jwt: Jwt) -> Result<()> {
+pub async fn start<F>(router: Arc<Router>, jwt: Jwt, func_get_id: F) -> Result<()>
+where
+    F: Fn(&str) -> u32,
+{
     let addr = "0.0.0.0:10301".to_string();
     let listener = TcpListener::bind(&addr).await?;
 
@@ -23,7 +26,7 @@ pub async fn start(router: Arc<Router>, jwt: Jwt) -> Result<()> {
     tokio::spawn(manager::start_loop(receiver));
 
     while let Ok((stream, client_addr)) = listener.accept().await {
-        let mut token_info = String::new();
+        let mut id: u32 = 0;
 
         let callback = |req: &Request, mut res: Response| {
             if let Some(token) = req
@@ -34,7 +37,8 @@ pub async fn start(router: Arc<Router>, jwt: Jwt) -> Result<()> {
                 match jwt.validate_access_token(&token) {
                     Ok(claims) => {
                         println!("claims: {:?}", claims);
-                        token_info.push_str(&claims.sub);
+                        id = func_get_id(&claims.sub);
+                        // token_info.push_str(&claims.sub);
                     }
                     Err(_) => *res.status_mut() = http::StatusCode::BAD_REQUEST,
                 }
@@ -52,7 +56,7 @@ pub async fn start(router: Arc<Router>, jwt: Jwt) -> Result<()> {
                     router.clone(),
                     ws_stream,
                     sender.clone(),
-                    token_info,
+                    id,
                 ));
             }
         }

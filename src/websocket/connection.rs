@@ -35,7 +35,6 @@ type MsgReciver = Receiver<Msg>;
 #[derive(Debug)]
 pub struct Connection {
     pub id: u32,
-    pub name: String,
     pub msg_sender: MsgSender,
 }
 
@@ -50,12 +49,8 @@ impl Connection {
     /// # Returns
     ///
     /// * A new `Connection` instance.
-    pub fn new(name: String, msg_sender: MsgSender) -> Self {
-        Self {
-            id: 0,
-            name,
-            msg_sender,
-        }
+    pub fn new(id: u32, msg_sender: MsgSender) -> Self {
+        Self { id, msg_sender }
     }
 }
 
@@ -73,15 +68,15 @@ pub async fn handle_connection(
     router: Arc<Router>,
     ws_stream: WebSocketStream<TcpStream>,
     mgr_sender: UnboundedSender<SocketEvents>,
-    token_info: String,
+    id: u32,
 ) -> Result<()> {
-    println!("token info: {}", token_info);
+    println!("socket id: {}", id);
     let (socket_writer, socket_reader) = ws_stream.split();
 
     // Create a channel for inter-task communication
     let (msg_sender, rx) = mpsc::channel::<Msg>(4);
 
-    let connection = Connection::new(token_info, msg_sender.clone());
+    let connection = Connection::new(id, msg_sender.clone());
 
     // Spawn a task to handle outgoing messages
     tokio::spawn(recieve_msg(rx, socket_writer));

@@ -13,7 +13,9 @@ async fn main() -> Result<()> {
     let router = init_router();
     let router = Arc::new(router);
 
-    websocket::server::start(router, jwt).await.unwrap();
+    websocket::server::start(router, jwt, sub_to_id)
+        .await
+        .unwrap();
     Ok(())
 }
 
@@ -36,4 +38,11 @@ async fn handle_order(data: BytesMut) -> Result<BytesMut> {
     // todo others
     let response = BytesMut::from("Order: #12345");
     Ok(response)
+}
+
+fn sub_to_id(sub: &str) -> u32 {
+    match sub.parse::<u32>() {
+        Ok(id) => id,
+        Err(_) => 0,
+    }
 }
