@@ -12,11 +12,11 @@ use tokio_tungstenite::{
     },
 };
 
-pub async fn start<F>(router: Arc<Router>, jwt: Jwt, func_get_id: F) -> Result<()>
+pub async fn start<F>(port: u16, router: Arc<Router>, jwt: Jwt, func_get_id: F) -> Result<()>
 where
     F: Fn(&str) -> u32,
 {
-    let addr = "0.0.0.0:10301".to_string();
+    let addr = format!("0.0.0.0:{}", port);
     let listener = TcpListener::bind(&addr).await?;
 
     println!("WebSocket Server is running on ws://{}", addr);

@@ -13,7 +13,7 @@ async fn main() -> Result<()> {
     let router = init_router();
     let router = Arc::new(router);
 
-    websocket::server::start(router, jwt, sub_to_id)
+    websocket::server::start(10031, router, jwt, sub_to_id)
         .await
         .unwrap();
     Ok(())
