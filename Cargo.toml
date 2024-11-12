@@ -8,9 +8,9 @@ edition = "2021"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.23.1"
-futures-util = "0.3.30"
-bytes = "1.7"
-byteorder = "1.5.0"
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+bytes = "1.8"
+byteorder = "1.5"
 service_utils_rs = { version = "0.1.2", features = ["jwt"] }
-thiserror = "1.0.63"
+thiserror = "1.0"
