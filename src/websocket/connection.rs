@@ -14,7 +14,7 @@ use std::sync::Arc;
 use tokio::{
     net::TcpStream,
     sync::{
-        mpsc::{self, Receiver, Sender, UnboundedSender},
+        mpsc::{self, Receiver, Sender},
         oneshot,
     },
 };

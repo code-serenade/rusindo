@@ -13,7 +13,14 @@ async fn main() -> Result<()> {
     let router = init_router();
     let router = Arc::new(router);
 
-    websocket::server::start(10031, router, jwt, sub_to_id)
+    let token_validator = move |token: &str| -> u32 {
+        match jwt.validate_access_token(token) {
+            Ok(claims) => sub_to_id(&claims.sub),
+            Err(_) => 0,
+        }
+    };
+
+    websocket::server::start(10031, router, token_validator)
         .await
         .unwrap();
     Ok(())
@@ -27,7 +34,7 @@ fn init_router() -> websocket::router::Router {
     router
 }
 
-async fn handle_user_info(data: BytesMut, tx: SocketEventSender) -> Result<BytesMut> {
+async fn handle_user_info(data: BytesMut, _tx: SocketEventSender) -> Result<BytesMut> {
     // todo others
     println!("data: {:?}", data);
     let response = BytesMut::from("User Info: John Doe");
@@ -35,7 +42,7 @@ async fn handle_user_info(data: BytesMut, tx: SocketEventSender) -> Result<Bytes
 }
 
 // 定义另一个处理函数
-async fn handle_order(data: BytesMut, tx: SocketEventSender) -> Result<BytesMut> {
+async fn handle_order(data: BytesMut, _tx: SocketEventSender) -> Result<BytesMut> {
     // todo others
     println!("data: {:?}", data);
     let response = BytesMut::from("Order: #12345");

@@ -1,6 +1,6 @@
 use super::{connection, events::SocketEvents, manager, router::Router};
 use crate::error::Result;
-use service_utils_rs::utils::string_util::QueryExtractor;
+use service_utils_rs::{services::jwt::Jwt, utils::string_util::QueryExtractor};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::{net::TcpListener, sync::mpsc::UnboundedSender};
@@ -14,9 +14,9 @@ use tokio_tungstenite::{
 
 pub type SocketEventSender = UnboundedSender<SocketEvents>;
 
-pub async fn start<V>(port: u16, router: Arc<Router>, token_validator: V) -> Result<()>
+pub async fn start<F>(port: u16, router: Arc<Router>, jwt: Jwt, func_get_id: F) -> Result<()>
 where
-    V: Fn(&str) -> u32 + Send + Sync + 'static,
+    F: Fn(&str) -> u32,
 {
     let addr = format!("0.0.0.0:{}", port);
     let listener = TcpListener::bind(&addr).await?;
@@ -36,7 +36,13 @@ where
                 .query()
                 .and_then(|query| query.extract_value("token").map(|t| t.to_string()))
             {
-                id = token_validator(&token);
+                match jwt.validate_access_token(&token) {
+                    Ok(claims) => {
+                        println!("claims: {:?}", claims);
+                        id = func_get_id(&claims.sub);
+                    }
+                    Err(_) => *res.status_mut() = http::StatusCode::BAD_REQUEST,
+                }
             } else {
                 *res.status_mut() = http::StatusCode::BAD_REQUEST;
             }
