@@ -3,7 +3,10 @@ use super::{
     error_code::{SUCCECE, SYSTEM_ERROR},
     events::SocketEvents,
 };
-use crate::error::{Error, Result};
+use crate::{
+    error::{Error, Result},
+    websocket::connection::MsgSender,
+};
 use bytes::BytesMut;
 use std::collections::HashMap;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -31,8 +34,9 @@ impl SocketManager {
     }
 
     pub fn remove_connection(&mut self, id: u32) {
-        println!("===============remove connection=========: {}", id);
-        self.connections.remove(&id).unwrap();
+        if self.connections.remove(&id).is_none() {
+            println!("Connection {} already removed or not found", id);
+        }
     }
 
     /// 广播消息给指定或所有连接的客户端
@@ -43,37 +47,31 @@ impl SocketManager {
         message: Option<BytesMut>,
         connection_ids: Option<Vec<u32>>,
     ) {
-        match connection_ids {
-            Some(ids) => {
-                // 发送给指定的连接
-                for id in ids {
-                    if let Some(connection) = self.connections.get(&id) {
-                        if let Err(e) = connection
-                            .msg_sender
-                            .send((error_code, cmd, message.clone()))
-                            .await
-                        {
-                            eprintln!("Failed to send message to connection {}: {}", id, e);
-                        }
-                    }
+        // 收集目标连接
+        let target_connections: Vec<(u32, MsgSender)> = match connection_ids {
+            Some(ids) => ids
+                .into_iter()
+                .filter_map(|id| {
+                    self.connections
+                        .get(&id)
+                        .map(|conn| (id, conn.msg_sender.clone()))
+                })
+                .collect(),
+            None => self
+                .connections
+                .iter()
+                .map(|(id, conn)| (*id, conn.msg_sender.clone()))
+                .collect(),
+        };
+
+        // 广播消息
+        for (id, msg_sender) in target_connections {
+            let msg = message.clone();
+            tokio::spawn(async move {
+                if let Err(e) = msg_sender.send((error_code, cmd, msg)).await {
+                    eprintln!("Failed to send message to connection {}: {}", id, e);
                 }
-            }
-            None => {
-                // 发送给所有连接
-                for (id, connection) in &self.connections {
-                    if let Err(e) = connection
-                        .msg_sender
-                        .send((error_code, cmd, message.clone()))
-                        .await
-                    {
-                        eprintln!("Failed to send message to connection {}: {}", id, e);
-                    }
-                }
-                println!(
-                    "Broadcast message sent to {} clients",
-                    self.connections.len()
-                );
-            }
+            });
         }
     }
 }
@@ -88,6 +86,15 @@ pub async fn start_loop(mut reciever: UnboundedReceiver<SocketEvents>) -> Result
                 }
                 Ok(_) => tx.send(SUCCECE).unwrap(),
             },
+            SocketEvents::Broadcast {
+                error_code,
+                cmd,
+                message,
+                connection_ids,
+            } => {
+                mgr.broadcast_message(error_code, cmd, message, connection_ids)
+                    .await;
+            }
             SocketEvents::Disconnect(id) => mgr.remove_connection(id),
         }
     }

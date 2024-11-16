@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use bytes::BytesMut;
-use rusido::error::Result;
 use rusido::websocket;
+use rusido::{error::Result, websocket::server::SocketEventSender};
 use service_utils_rs::{services::jwt::Jwt, settings::Settings};
 
 #[tokio::main]
@@ -27,7 +27,7 @@ fn init_router() -> websocket::router::Router {
     router
 }
 
-async fn handle_user_info(data: BytesMut) -> Result<BytesMut> {
+async fn handle_user_info(data: BytesMut, tx: SocketEventSender) -> Result<BytesMut> {
     // todo others
     println!("data: {:?}", data);
     let response = BytesMut::from("User Info: John Doe");
@@ -35,7 +35,7 @@ async fn handle_user_info(data: BytesMut) -> Result<BytesMut> {
 }
 
 // 定义另一个处理函数
-async fn handle_order(data: BytesMut) -> Result<BytesMut> {
+async fn handle_order(data: BytesMut, tx: SocketEventSender) -> Result<BytesMut> {
     // todo others
     println!("data: {:?}", data);
     let response = BytesMut::from("Order: #12345");

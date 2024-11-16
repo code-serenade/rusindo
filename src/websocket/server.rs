@@ -2,8 +2,8 @@ use super::{connection, events::SocketEvents, manager, router::Router};
 use crate::error::Result;
 use service_utils_rs::{services::jwt::Jwt, utils::string_util::QueryExtractor};
 use std::sync::Arc;
-use tokio::net::TcpListener;
 use tokio::sync::mpsc;
+use tokio::{net::TcpListener, sync::mpsc::UnboundedSender};
 use tokio_tungstenite::{
     accept_hdr_async,
     tungstenite::{
@@ -11,6 +11,8 @@ use tokio_tungstenite::{
         http,
     },
 };
+
+pub type SocketEventSender = UnboundedSender<SocketEvents>;
 
 pub async fn start<F>(port: u16, router: Arc<Router>, jwt: Jwt, func_get_id: F) -> Result<()>
 where

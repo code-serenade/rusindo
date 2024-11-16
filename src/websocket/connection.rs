@@ -1,4 +1,4 @@
-use super::router::Router;
+use super::{router::Router, server::SocketEventSender};
 use crate::{
     error::{Error, Result},
     websocket::events::SocketEvents,
@@ -27,7 +27,7 @@ type SocketReader = SplitStream<WebSocketStream<TcpStream>>;
 /// Type alias for a message containing an error code, command, and optional payload.
 type Msg = (u16, u16, Option<BytesMut>);
 /// Sender type alias for sending `Msg` between tasks.
-type MsgSender = Sender<Msg>;
+pub type MsgSender = Sender<Msg>;
 /// Receiver type alias for receiving `Msg` in a task.
 type MsgReciver = Receiver<Msg>;
 
@@ -47,7 +47,7 @@ impl Connection {
 pub async fn handle_connection(
     router: Arc<Router>,
     ws_stream: WebSocketStream<TcpStream>,
-    mgr_sender: UnboundedSender<SocketEvents>,
+    sender: SocketEventSender,
     id: u32,
 ) {
     println!("socket id: {}", id);
@@ -62,7 +62,7 @@ pub async fn handle_connection(
     let conn_id = connection.id;
 
     // Send a handshake event to the connection manager
-    mgr_sender
+    sender
         .send(SocketEvents::Handshake(tx, connection))
         .unwrap();
 
@@ -71,7 +71,7 @@ pub async fn handle_connection(
         ws_stream,
         router,
         msg_sender,
-        mgr_sender,
+        sender,
         conn_id,
         msg_reciever,
     )
@@ -84,7 +84,7 @@ async fn process_handshake(
     ws_stream: WebSocketStream<TcpStream>,
     router: Arc<Router>,
     msg_sender: MsgSender,
-    mgr_sender: UnboundedSender<SocketEvents>,
+    socket_event_sender: SocketEventSender,
     connection_id: u32,
     msg_reciever: MsgReciver,
 ) -> Result<()> {
@@ -93,7 +93,14 @@ async fn process_handshake(
             0 => {
                 let (socket_writer, socket_reader) = ws_stream.split();
                 tokio::spawn(recieve_msg(msg_reciever, socket_writer));
-                handle_msg(router, socket_reader, msg_sender, mgr_sender, connection_id).await
+                handle_msg(
+                    router,
+                    socket_reader,
+                    msg_sender,
+                    socket_event_sender,
+                    connection_id,
+                )
+                .await
             }
             _ => Ok(()),
         },
@@ -124,7 +131,7 @@ async fn handle_msg(
     router: Arc<Router>,
     mut read: SocketReader,
     tx: MsgSender,
-    mgr_sender: UnboundedSender<SocketEvents>,
+    socket_event_sender: SocketEventSender,
     connection_id: u32,
 ) -> Result<()> {
     while let Some(message) = read.next().await {
@@ -160,6 +167,7 @@ async fn handle_msg(
                     message_data,
                     router.clone(),
                     tx.clone(),
+                    socket_event_sender.clone(),
                 ));
             } else {
                 eprintln!("Header too short: {}", data.len());
@@ -168,7 +176,7 @@ async fn handle_msg(
     }
 
     println!("WebSocket connection closed");
-    mgr_sender
+    socket_event_sender
         .send(SocketEvents::Disconnect(connection_id))
         .map_err(|e| Error::CustomError {
             message: format!("Failed to send disconnect event: {}", e),
@@ -179,8 +187,17 @@ async fn handle_msg(
     Ok(())
 }
 
-async fn process_message(cmd: u16, message: BytesMut, router: Arc<Router>, tx: MsgSender) {
-    match router.handle_message(cmd, message).await {
+async fn process_message(
+    cmd: u16,
+    message: BytesMut,
+    router: Arc<Router>,
+    tx: MsgSender,
+    socket_event_sender: SocketEventSender,
+) {
+    match router
+        .handle_message(cmd, message, socket_event_sender)
+        .await
+    {
         Ok(response_data) => {
             if let Err(e) = tx.send((0, cmd, Some(response_data))).await {
                 eprintln!("Error sending processed message: {}", e);
