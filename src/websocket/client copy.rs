@@ -9,7 +9,7 @@ use futures::{
 use std::time::Duration;
 use tokio::{
     net::TcpStream,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::mpsc::{self, Receiver},
     time,
 };
 use tokio_tungstenite::{
@@ -17,52 +17,97 @@ use tokio_tungstenite::{
 };
 
 type ClientSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
 type SocketReader = SplitStream<WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>>;
+
 type SocketWriter = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
-type MsgSender = Sender<SendMessage>;
+
 type MsgReciver = Receiver<SendMessage>;
 /// WebSocket 客户端结构体
 pub struct WebSocketClient {
     url: String,
-    msg_sender: MsgSender,
-    msg_reciever: MsgReciver,
+    socket: Option<ClientSocket>,
 }
 
 impl WebSocketClient {
     /// 创建一个新的 WebSocket 客户端
     pub async fn new(url: String) -> Result<Self> {
-        let (msg_sender, msg_reciever) = mpsc::channel::<SendMessage>(4);
         let client = WebSocketClient {
             url,
-            msg_sender,
-            msg_reciever,
+            socket: None, // 初始时没有连接
         };
         Ok(client)
     }
 
     /// 连接到 WebSocket 服务器
-    pub async fn connect(&self) -> Result<()> {
+    pub async fn connect(&mut self) -> Result<()> {
         let (socket, _) = connect_async(&self.url).await?;
         let (socket_writer, socket_reader) = socket.split();
-
+        let (msg_sender, msg_reciever) = mpsc::channel::<SendMessage>(4);
         tokio::spawn(receive_message(socket_reader));
-        tokio::spawn(handle_send_msg(&self.msg_reciever, socket_writer));
+        tokio::spawn(handle_send_msg(msg_reciever, socket_writer));
         // self.socket = Some(socket);
         println!("成功连接到 WebSocket 服务器");
         Ok(())
     }
 
     /// 发送消息到 WebSocket 服务器
-    // pub async fn send_message(&mut self, msg: String) -> Result<()> {
-    //     if let Some(socket) = &mut self.socket {
-    //         let msg = Message::Text(msg.into());
-    //         socket.send(msg).await?;
-    //         println!("已发送消息");
-    //         Ok(())
-    //     } else {
-    //         Err(Error::ErrorMessage("WebSocket 未连接".to_string()))
-    //     }
-    // }
+    pub async fn send_message(&mut self, msg: String) -> Result<()> {
+        if let Some(socket) = &mut self.socket {
+            let msg = Message::Text(msg.into());
+            socket.send(msg).await?;
+            println!("已发送消息");
+            Ok(())
+        } else {
+            Err(Error::ErrorMessage("WebSocket 未连接".to_string()))
+        }
+    }
+
+    /// 接收 WebSocket 服务器的消息
+    pub async fn receive_message(&mut self) -> Result<()> {
+        loop {
+            // 如果 WebSocket 连接丢失，则重连
+            if self.socket.is_none() {
+                println!("WebSocket 连接丢失，正在重连...");
+                // 这里移除了 sleep 和重连逻辑，直接调用 reconnect
+                self.reconnect().await?;
+            }
+
+            // 接收消息
+            if let Some(socket) = &mut self.socket {
+                match socket.next().await {
+                    Some(Ok(Message::Text(text))) => {
+                        println!("收到消息: {}", text);
+                    }
+                    Some(Ok(Message::Binary(_))) => {
+                        println!("收到二进制消息");
+                    }
+                    Some(Ok(Message::Ping(_))) => {
+                        println!("收到 Ping 消息");
+                    }
+                    Some(Ok(Message::Pong(_))) => {
+                        println!("收到 Pong 消息");
+                    }
+                    Some(Ok(Message::Close(_))) => {
+                        println!("连接关闭");
+                        break;
+                    }
+                    Some(Ok(Message::Frame(_))) => {
+                        println!("收到帧消息");
+                    }
+                    Some(Err(e)) => {
+                        println!("接收消息时出错: {}", e);
+                        break;
+                    }
+                    None => {
+                        println!("没有更多的消息");
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 
     /// 尝试重连 WebSocket
     async fn reconnect(&mut self) -> Result<()> {
@@ -90,27 +135,27 @@ impl WebSocketClient {
 
     /// 定时发送 Ping 消息
     pub async fn send_ping(&mut self, interval: Duration) -> Result<()> {
-        // let mut interval_timer = time::interval(interval);
+        let mut interval_timer = time::interval(interval);
 
-        // loop {
-        //     interval_timer.tick().await;
+        loop {
+            interval_timer.tick().await;
 
-        //     // 如果 WebSocket 连接丢失，则重连
-        //     if self.socket.is_none() {
-        //         println!("WebSocket 连接丢失，正在重连...");
-        //         self.reconnect().await?;
-        //     }
+            // 如果 WebSocket 连接丢失，则重连
+            if self.socket.is_none() {
+                println!("WebSocket 连接丢失，正在重连...");
+                self.reconnect().await?;
+            }
 
-        //     // 发送 Ping 消息
-        //     if let Some(socket) = &mut self.socket {
-        //         let ping_msg = Message::Ping(vec![]);
-        //         if let Err(e) = socket.send(ping_msg).await {
-        //             println!("发送 Ping 消息时出错: {}", e);
-        //             break;
-        //         }
-        //         println!("已发送 Ping 消息");
-        //     }
-        // }
+            // 发送 Ping 消息
+            if let Some(socket) = &mut self.socket {
+                let ping_msg = Message::Ping(vec![]);
+                if let Err(e) = socket.send(ping_msg).await {
+                    println!("发送 Ping 消息时出错: {}", e);
+                    break;
+                }
+                println!("已发送 Ping 消息");
+            }
+        }
         Ok(())
     }
 }
@@ -150,7 +195,7 @@ async fn receive_message(mut socket_reader: SocketReader) -> Result<()> {
     Ok(())
 }
 
-async fn handle_send_msg(mut rx: &MsgReciver, mut writer: SocketWriter) -> Result<()> {
+async fn handle_send_msg(mut rx: MsgReciver, mut writer: SocketWriter) -> Result<()> {
     // while let Some((error_code, cmd, response_data)) = rx.recv().await {
     //     let data = vec![error_code, cmd];
     //     let header = data.parse_header();
